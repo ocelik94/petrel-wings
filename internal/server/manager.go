@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sync"
+	"time"
 
 	wdocker "github.com/ocelik94/petrel-wings/internal/docker"
 	"gopkg.in/yaml.v3"
@@ -23,6 +25,8 @@ type Manager struct {
 	docker   *wdocker.Client
 	network  string
 }
+
+var serverIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // CreateRequest describes a new server provisioning request.
 type CreateRequest struct {
@@ -79,7 +83,14 @@ func (m *Manager) Initialize(ctx context.Context) error {
 		if data.ID == "" {
 			data.ID = entry.Name()
 		}
-		data.DataPath = filepath.Join(m.baseServersPath(), data.ID, "data")
+		if !validServerID(data.ID) {
+			continue
+		}
+		serverPath, err := m.serverPath(data.ID)
+		if err != nil {
+			continue
+		}
+		data.DataPath = filepath.Join(serverPath, "data")
 		srv := NewServer(m.docker, m.network, data)
 		m.mu.Lock()
 		m.servers[srv.ID] = srv
@@ -96,6 +107,9 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Server, error)
 	if req.ID == "" {
 		req.ID = generateID()
 	}
+	if !validServerID(req.ID) {
+		return Server{}, errors.New("server id contains invalid characters")
+	}
 
 	m.mu.RLock()
 	_, exists := m.servers[req.ID]
@@ -104,7 +118,10 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Server, error)
 		return Server{}, fmt.Errorf("server %q already exists", req.ID)
 	}
 
-	serverPath := filepath.Join(m.baseServersPath(), req.ID)
+	serverPath, err := m.serverPath(req.ID)
+	if err != nil {
+		return Server{}, err
+	}
 	dataPath := filepath.Join(serverPath, "data")
 	if err := os.MkdirAll(dataPath, 0o755); err != nil {
 		return Server{}, fmt.Errorf("creating server data directory: %w", err)
@@ -165,6 +182,9 @@ func (m *Manager) List() []Server {
 
 // Delete removes a server and its data.
 func (m *Manager) Delete(ctx context.Context, id string) error {
+	if !validServerID(id) {
+		return os.ErrNotExist
+	}
 	m.mu.RLock()
 	srv, ok := m.servers[id]
 	m.mu.RUnlock()
@@ -175,7 +195,10 @@ func (m *Manager) Delete(ctx context.Context, id string) error {
 	if err := srv.Kill(ctx); err != nil {
 		return err
 	}
-	serverPath := filepath.Join(m.baseServersPath(), id)
+	serverPath, err := m.serverPath(id)
+	if err != nil {
+		return err
+	}
 	if err := os.RemoveAll(serverPath); err != nil {
 		return fmt.Errorf("deleting server data directory: %w", err)
 	}
@@ -208,7 +231,10 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 }
 
 func (m *Manager) persist(srv *Server) error {
-	serverPath := filepath.Join(m.baseServersPath(), srv.ID)
+	serverPath, err := m.serverPath(srv.ID)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(serverPath, 0o755); err != nil {
 		return fmt.Errorf("creating server directory: %w", err)
 	}
@@ -230,7 +256,27 @@ func (m *Manager) baseServersPath() string {
 func generateID() string {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
-		return "srv-fallback"
+		return fmt.Sprintf("srv-%d", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(buf)
+}
+
+func validServerID(id string) bool {
+	return id != "" && serverIDPattern.MatchString(id)
+}
+
+func (m *Manager) serverPath(id string) (string, error) {
+	if !validServerID(id) {
+		return "", errors.New("invalid server id")
+	}
+	base := m.baseServersPath()
+	path := filepath.Join(base, id)
+	rel, err := filepath.Rel(base, path)
+	if err != nil {
+		return "", fmt.Errorf("resolving server path: %w", err)
+	}
+	if rel == ".." || rel == "." || filepath.IsAbs(rel) {
+		return "", errors.New("server path escapes base directory")
+	}
+	return path, nil
 }

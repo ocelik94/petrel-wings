@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -44,9 +45,15 @@ func CreateArchive(root string, paths []string) (io.Reader, error) {
 				if err != nil {
 					return err
 				}
-				defer file.Close()
 				_, err = io.Copy(tw, file)
-				return err
+				closeErr := file.Close()
+				if err != nil {
+					return err
+				}
+				if closeErr != nil {
+					return closeErr
+				}
+				return nil
 			}); err != nil {
 				writeErr(fmt.Errorf("walking archive paths: %w", err))
 				return
@@ -82,10 +89,18 @@ func ExtractArchive(reader io.Reader, dest string) error {
 		if err != nil {
 			return fmt.Errorf("reading tar entry: %w", err)
 		}
-		target := filepath.Join(dest, hdr.Name)
 		cleanDest := filepath.Clean(dest)
+		cleanName, err := sanitizeArchiveEntryName(hdr.Name)
+		if err != nil {
+			return fmt.Errorf("archive path escapes destination: %s", hdr.Name)
+		}
+		if cleanName == "" {
+			continue
+		}
+		target := filepath.Join(cleanDest, cleanName)
 		cleanTarget := filepath.Clean(target)
-		if !strings.HasPrefix(cleanTarget, cleanDest) {
+		destPrefix := cleanDest + string(filepath.Separator)
+		if cleanTarget != cleanDest && !strings.HasPrefix(cleanTarget, destPrefix) {
 			return fmt.Errorf("archive path escapes destination: %s", hdr.Name)
 		}
 		switch hdr.Typeflag {
@@ -110,4 +125,16 @@ func ExtractArchive(reader io.Reader, dest string) error {
 			}
 		}
 	}
+}
+
+func sanitizeArchiveEntryName(name string) (string, error) {
+	clean := path.Clean("/" + name)
+	rel := strings.TrimPrefix(clean, "/")
+	if rel == "." || rel == "" {
+		return "", nil
+	}
+	if strings.Contains(rel, "../") || strings.HasPrefix(rel, "..") {
+		return "", fmt.Errorf("invalid archive path")
+	}
+	return filepath.Clean(filepath.FromSlash(rel)), nil
 }

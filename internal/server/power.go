@@ -4,10 +4,14 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	wdocker "github.com/ocelik94/petrel-wings/internal/docker"
+)
+
+const (
+	waitContainerTimeout = 8 * time.Second
+	stopContainerTimeout = 10 * time.Second
 )
 
 // Start starts the server container and attaches console streams.
@@ -83,16 +87,21 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 
 	_ = s.WriteCommand("stop")
-	time.Sleep(2 * time.Second)
 
 	s.mu.RLock()
 	containerID := s.ContainerID
 	s.mu.RUnlock()
-	stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	if err := s.docker.StopContainer(stopCtx, containerID, 10*time.Second); err != nil {
-		s.ForceState(StateError)
-		return fmt.Errorf("stopping container: %w", err)
+	waitCtx, waitCancel := context.WithTimeout(ctx, waitContainerTimeout)
+	_, waitErr := s.docker.WaitContainer(waitCtx, containerID)
+	waitCancel()
+
+	if waitErr != nil {
+		stopCtx, cancel := context.WithTimeout(ctx, stopContainerTimeout)
+		defer cancel()
+		if err := s.docker.StopContainer(stopCtx, containerID, stopContainerTimeout); err != nil {
+			s.ForceState(StateError)
+			return fmt.Errorf("stopping container: %w", err)
+		}
 	}
 
 	s.mu.Lock()
@@ -135,6 +144,6 @@ func (s *Server) Kill(ctx context.Context) error {
 	s.ContainerID = ""
 	s.mu.Unlock()
 	s.ForceState(StateStopped)
-	s.console.Append(strings.TrimSpace("container killed"))
+	s.console.Append("container killed")
 	return nil
 }

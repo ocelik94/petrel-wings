@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const maxReadSize = 4 * 1024 * 1024
+const maxReadSize = 4 << 20 // 4 MiB
 
 // Entry describes a filesystem entry.
 type Entry struct {
