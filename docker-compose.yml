@@ -60,7 +60,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-petrel}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-petrel}"
-    command: npm run db:migrate
+    command: npx drizzle-kit migrate
     networks:
       - petrel
 

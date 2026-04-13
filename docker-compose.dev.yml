@@ -35,7 +35,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: "postgresql://petrel:petrel@postgres:5432/petrel"
-    command: npm run db:migrate
+    command: npx drizzle-kit migrate
 
   panel:
     build:
