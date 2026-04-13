@@ -1,0 +1,14 @@
+FROM node:lts-alpine
+
+WORKDIR /app
+
+# Install dependencies (including devDependencies so drizzle-kit is resolvable)
+COPY petrel-panel/package*.json ./
+RUN npm ci
+
+# Copy drizzle config and schema
+COPY petrel-panel/drizzle.config.ts ./
+COPY petrel-panel/src ./src
+
+# Ensure the migrations directory exists (populated via volume mount at runtime)
+RUN mkdir -p drizzle

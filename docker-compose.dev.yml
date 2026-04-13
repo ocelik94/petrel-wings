@@ -27,15 +27,17 @@ services:
 
   migrate:
     build:
-      context: ../petrel-panel
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: petrel-wings/Dockerfile.migrate
     restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ../petrel-panel/drizzle:/app/drizzle:ro
     environment:
       DATABASE_URL: "postgresql://petrel:petrel@postgres:5432/petrel"
-    command: npx drizzle-kit migrate --config drizzle.config.ts
+    command: node_modules/.bin/drizzle-kit migrate --config drizzle.config.ts
 
   panel:
     build:
