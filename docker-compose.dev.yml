@@ -25,6 +25,18 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build:
+      context: ../petrel-panel
+      dockerfile: Dockerfile
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://petrel:petrel@postgres:5432/petrel"
+    command: npm run db:migrate
+
   panel:
     build:
       context: ../petrel-panel
@@ -33,6 +45,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "3000:3000"
     environment:
