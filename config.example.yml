@@ -1,0 +1,14 @@
+panel_url: "https://panel.example.com"
+token: "shared-secret-daemon-token"
+
+api:
+  host: "0.0.0.0"
+  port: "8443"
+  tls_cert: "/etc/petrel/certs/cert.pem"
+  tls_key: "/etc/petrel/certs/key.pem"
+
+data_path: "/var/lib/petrel"
+
+docker:
+  socket: "/var/run/docker.sock"
+  network: "petrel_network"
