@@ -10,5 +10,8 @@ RUN npm ci
 COPY petrel-panel/drizzle.config.ts ./
 COPY petrel-panel/src ./src
 
-# Ensure the migrations directory exists (populated via volume mount at runtime)
-RUN mkdir -p drizzle
+# Generate migration SQL files from the current schema at build time.
+# drizzle-kit generate only reads TypeScript schema files; it never connects
+# to the database. The dummy DATABASE_URL satisfies the non-null check in
+# drizzle.config.ts without actually being used.
+RUN DATABASE_URL=postgresql://x:x@x:5432/x node_modules/.bin/drizzle-kit generate --config drizzle.config.ts

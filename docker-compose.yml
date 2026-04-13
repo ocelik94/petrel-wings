@@ -58,8 +58,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ../petrel-panel/drizzle:/app/drizzle:ro
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-petrel}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-petrel}"
     command: node_modules/.bin/drizzle-kit migrate --config drizzle.config.ts
