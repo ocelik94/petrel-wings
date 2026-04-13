@@ -1,0 +1,15 @@
+# Keep build context lean for Dockerfile.migrate
+# Exclude large/unnecessary directories from both repos
+
+# petrel-wings Go source (not needed for migrations)
+petrel-wings/.git
+petrel-wings/vendor
+petrel-wings/cmd
+petrel-wings/internal
+
+# petrel-panel - exclude node_modules (rebuilt inside image) and dev artifacts
+petrel-panel/.git
+petrel-panel/node_modules
+petrel-panel/.svelte-kit
+petrel-panel/build
+petrel-panel/static
