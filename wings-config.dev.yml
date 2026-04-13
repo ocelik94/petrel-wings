@@ -1,0 +1,17 @@
+# Wings configuration for local development.
+# No TLS. Panel reachable via Docker Compose service name.
+
+panel_url: "http://panel:3000"
+token: "dev-token-change-in-production"
+
+api:
+  host: "0.0.0.0"
+  port: "8443"
+  tls_cert: ""
+  tls_key: ""
+
+data_path: "/var/lib/petrel"
+
+docker:
+  socket: "/var/run/docker.sock"
+  network: "host"

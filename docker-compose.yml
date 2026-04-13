@@ -1,0 +1,104 @@
+# Petrel - Production Docker Compose
+#
+# Runs: Traefik (TLS) + PostgreSQL + Panel + Wings
+# Traefik auto-provisions Let's Encrypt certificates.
+# No manual cert.pem / key.pem needed.
+#
+# Usage:
+#   cp .env.example .env   # edit with real values
+#   docker compose up -d
+
+services:
+  traefik:
+    image: traefik:v3
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt_data:/letsencrypt
+    networks:
+      - petrel
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-petrel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-petrel}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - petrel
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-petrel}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  panel:
+    build:
+      context: ../petrel-panel
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      ORIGIN: "https://${PANEL_DOMAIN}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-petrel}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-petrel}"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET}"
+      GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID:-}"
+      GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET:-}"
+      ADMIN_EMAILS: "${ADMIN_EMAILS:-}"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.panel.rule=Host(`${PANEL_DOMAIN}`)"
+      - "traefik.http.routers.panel.entrypoints=websecure"
+      - "traefik.http.routers.panel.tls.certresolver=letsencrypt"
+      - "traefik.http.services.panel.loadbalancer.server.port=3000"
+    networks:
+      - petrel
+
+  wings:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - wings_data:/var/lib/petrel
+      - ./wings-config.yml:/etc/petrel/config.yml:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wings.rule=Host(`${WINGS_DOMAIN}`)"
+      - "traefik.http.routers.wings.entrypoints=websecure"
+      - "traefik.http.routers.wings.tls.certresolver=letsencrypt"
+      - "traefik.http.services.wings.loadbalancer.server.port=8443"
+    networks:
+      - petrel
+
+volumes:
+  postgres_data:
+  wings_data:
+  letsencrypt_data:
+
+networks:
+  petrel:
+    driver: bridge
